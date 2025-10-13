@@ -1,12 +1,57 @@
 ﻿const { google } = require('googleapis');
 
-const auth = new google.auth.GoogleAuth({
-  keyFile: './credentials.json',
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+// 🔧 АУТЕНТИФИКАЦИЯ ДЛЯ RENDER
+function getAuth() {
+  console.log('🔐 Инициализация аутентификации Google Sheets...');
+  
+  // Проверяем наличие обязательных переменных
+  if (!process.env.GOOGLE_PRIVATE_KEY) {
+    console.error('❌ GOOGLE_PRIVATE_KEY не найден в переменных окружения');
+    throw new Error('GOOGLE_PRIVATE_KEY is required');
+  }
+  
+  if (!process.env.GOOGLE_CLIENT_EMAIL) {
+    console.error('❌ GOOGLE_CLIENT_EMAIL не найден в переменных окружения');
+    throw new Error('GOOGLE_CLIENT_EMAIL is required');
+  }
 
-const sheets = google.sheets({ version: 'v4', auth });
-const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+  const SPREADSHEET_ID = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
+  if (!SPREADSHEET_ID) {
+    console.error('❌ SPREADSHEET_ID не найден в переменных окружения');
+    throw new Error('SPREADSHEET_ID is required');
+  }
+
+  console.log('✅ Переменные окружения найдены');
+  
+  try {
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL,
+      null,
+      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    
+    console.log('✅ Аутентификация JWT создана');
+    return auth;
+  } catch (error) {
+    console.error('💥 Ошибка создания аутентификации:', error);
+    throw error;
+  }
+}
+
+// Инициализация глобальных переменных
+let auth;
+let sheets;
+let SPREADSHEET_ID;
+
+try {
+  auth = getAuth();
+  sheets = google.sheets({ version: 'v4', auth });
+  SPREADSHEET_ID = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
+  console.log('✅ Google Sheets клиент инициализирован, SPREADSHEET_ID:', SPREADSHEET_ID);
+} catch (error) {
+  console.error('💥 Критическая ошибка инициализации Google Sheets:', error);
+}
 
 // Функция проверки прав администратора
 function isAdmin(ctx) {
@@ -16,7 +61,7 @@ function isAdmin(ctx) {
 }
 
 // Функция с таймаутом
-function withTimeout(promise, timeoutMs = 8000) {
+function withTimeout(promise, timeoutMs = 10000) {
   return Promise.race([
     promise,
     new Promise((_, reject) => 
@@ -35,19 +80,33 @@ function generateOrderId(lastOrderId) {
 // Получение последнего номера заказа
 async function getLastOrderId() {
   try {
+    console.log('🔍 Получение последнего OrderID...');
+    
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'ORDERS!A2:A',
     }));
 
     const orders = response.data.values || [];
-    if (orders.length === 0) return null;
+    console.log(`📋 Найдено заказов в таблице: ${orders.length}`);
+    
+    if (orders.length === 0) {
+      console.log('📭 Таблица заказов пуста, начинаем с 001');
+      return null;
+    }
     
     const orderNumbers = orders.map(row => parseInt(row[0])).filter(num => !isNaN(num));
-    if (orderNumbers.length === 0) return null;
+    if (orderNumbers.length === 0) {
+      console.log('❌ Не найдено валидных номеров заказов');
+      return null;
+    }
     
-    return Math.max(...orderNumbers).toString();
+    const lastId = Math.max(...orderNumbers).toString();
+    console.log(`✅ Последний OrderID: ${lastId}`);
+    return lastId;
+    
   } catch (error) {
+    console.error('💥 Ошибка получения последнего OrderID:', error);
     return null;
   }
 }
@@ -55,7 +114,10 @@ async function getLastOrderId() {
 // Функция уведомления клиента
 async function notifyCustomer(orderId, status, userChatId, bot) {
   try {
+    console.log(`🔔 Уведомление клиента ${userChatId} о заказе ${orderId}`);
+    
     if (!userChatId || isNaN(userChatId) || userChatId.toString().length < 5) {
+      console.log('❌ Неверный userChatId для уведомления');
       return;
     }
     
@@ -70,25 +132,34 @@ async function notifyCustomer(orderId, status, userChatId, bot) {
     if (statusMessages[status]) {
       const message = `📦 Статус вашего заказа #${orderId}:\n${statusMessages[status]}`;
       await bot.telegram.sendMessage(userChatId, message);
+      console.log(`✅ Уведомление отправлено клиенту ${userChatId}`);
+    } else {
+      console.log(`❌ Неизвестный статус для уведомления: ${status}`);
     }
     
   } catch (error) {
-    // Тихий fail - не спамим в консоль
+    console.error('💥 Ошибка уведомления клиента:', error);
   }
 }
 
 // Функция получения данных заказа
 async function getOrderData(orderId) {
   try {
+    console.log(`🔍 Получение данных заказа ${orderId}...`);
+    
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'ORDERS!A:K',
     }));
 
     const orders = response.data.values || [];
+    console.log(`📋 Всего заказов в таблице: ${orders.length}`);
+    
     const order = orders.find(row => row[0] === orderId);
     
     if (order) {
+      console.log(`✅ Заказ ${orderId} найден`);
+      
       let userChatId = null;
       const userChatIdValue = order[10];
       
@@ -99,7 +170,7 @@ async function getOrderData(orderId) {
         }
       }
       
-      return {
+      const orderData = {
         orderId: order[0],
         date: order[1],
         time: order[2],
@@ -112,61 +183,99 @@ async function getOrderData(orderId) {
         userInfo: order[9],
         userChatId: userChatId
       };
+      
+      console.log(`📊 Данные заказа:`, orderData);
+      return orderData;
     }
     
+    console.log(`❌ Заказ ${orderId} не найден`);
     return null;
     
   } catch (error) {
+    console.error(`💥 Ошибка получения данных заказа ${orderId}:`, error);
     return null;
   }
 }
 
 // Создание заказа
 async function createOrder(orderData) {
+  console.log('🎯 Начало создания заказа:', JSON.stringify(orderData, null, 2));
+  
   try {
+    // Проверяем обязательные поля
+    if (!orderData.name && !orderData.customer) {
+      throw new Error('Не указано имя клиента');
+    }
+    if (!orderData.phone) {
+      throw new Error('Не указан телефон');
+    }
+    if (!orderData.address) {
+      throw new Error('Не указан адрес');
+    }
+    if (!orderData.items || orderData.items.length === 0) {
+      throw new Error('Корзина пуста');
+    }
+
     const lastOrderId = await getLastOrderId();
     const orderId = generateOrderId(lastOrderId);
     
+    console.log(`🆔 Сгенерирован OrderID: ${orderId}`);
+
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().split(' ')[0];
     
-    const itemsWithSubtotal = (orderData.items || []).map(item => ({
-      ...item,
-      subtotal: (item.price || 0) * (item.quantity || 0)
-    }));
+    console.log('📅 Дата и время заказа:', date, time);
+
+    // Расчет товаров и суммы
+    const itemsWithSubtotal = (orderData.items || []).map(item => {
+      const subtotal = (item.price || 0) * (item.quantity || 0);
+      console.log(`📦 Товар: ${item.productName} × ${item.quantity} = ${subtotal}р`);
+      return {
+        ...item,
+        subtotal: subtotal
+      };
+    });
 
     const calculatedTotal = itemsWithSubtotal.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+    console.log(`💰 Общая сумма заказа: ${calculatedTotal}р`);
 
-    const userInfo = orderData.telegramUsername || 
+    // Подготавливаем данные пользователя
+    const userInfo = orderData.userInfo || 
+                    orderData.telegramUsername || 
                     (orderData.userId ? `ID: ${orderData.userId}` : 'Не указан');
 
     const userChatId = orderData.userChatId ? orderData.userChatId.toString() : '';
 
+    // Данные для строки заказа
     const orderRow = [
       orderId,
       date,
       time,
       'new',
-      orderData.name || '',
-      orderData.phone || '',
-      orderData.address || '',
+      orderData.customer || orderData.name,
+      orderData.phone,
+      orderData.address,
       calculatedTotal,
-      '',
+      orderData.notes || '',
       userInfo,
       userChatId
     ];
 
-    await withTimeout(sheets.spreadsheets.values.append({
+    console.log('📝 Данные для ORDERS:', orderRow);
+
+    // Записываем в таблицу ORDERS
+    console.log('💾 Запись в ORDERS...');
+    const orderResponse = await withTimeout(sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'ORDERS!A:K',
       valueInputOption: 'RAW',
-      resource: {
-        values: [orderRow]
-      }
+      resource: { values: [orderRow] }
     }));
 
-    // Пакетная запись items для скорости
+    console.log('✅ Запись в ORDERS успешна');
+
+    // Записываем товары в ORDER_ITEMS
     const itemRows = itemsWithSubtotal.map(item => [
       orderId,
       item.productId || '',
@@ -176,20 +285,23 @@ async function createOrder(orderData) {
       item.subtotal || 0
     ]);
 
+    console.log(`📦 Записываем ${itemRows.length} товаров в ORDER_ITEMS...`);
+
     if (itemRows.length > 0) {
       await withTimeout(sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
         range: 'ORDER_ITEMS!A:F',
         valueInputOption: 'RAW',
-        resource: {
-          values: itemRows
-        }
+        resource: { values: itemRows }
       }));
+      console.log('✅ Запись в ORDER_ITEMS успешна');
     }
 
+    console.log(`🎉 Заказ #${orderId} успешно создан!`);
     return orderId;
 
   } catch (error) {
+    console.error('💥 Критическая ошибка создания заказа:', error);
     throw error;
   }
 }
@@ -197,6 +309,8 @@ async function createOrder(orderData) {
 // Обновление статуса с записью в таблицу
 async function updateOrderStatus(orderId, newStatus, adminNotes = '', adminName = 'Система') {
   try {
+    console.log(`🔄 Обновление статуса заказа ${orderId} на "${newStatus}"`);
+    
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: 'ORDERS!A:K',
@@ -206,10 +320,12 @@ async function updateOrderStatus(orderId, newStatus, adminNotes = '', adminName 
     const orderRowIndex = orders.findIndex(row => row[0] === orderId);
     
     if (orderRowIndex !== -1) {
-      const actualRowIndex = orderRowIndex + 1;
+      const actualRowIndex = orderRowIndex + 1; // +1 потому что в Sheets строки с 1
       const now = new Date();
       const timestamp = now.toLocaleString('ru-RU');
       
+      console.log(`📝 Обновляем строку ${actualRowIndex} в ORDERS`);
+
       // Обновляем статус в основной таблице
       await withTimeout(sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
@@ -232,12 +348,15 @@ async function updateOrderStatus(orderId, newStatus, adminNotes = '', adminName 
         }
       }));
       
+      console.log(`✅ Статус заказа ${orderId} обновлен на "${newStatus}"`);
       return true;
     }
     
+    console.log(`❌ Заказ ${orderId} не найден для обновления статуса`);
     return false;
     
   } catch (error) {
+    console.error(`💥 Ошибка обновления статуса заказа ${orderId}:`, error);
     throw error;
   }
 }
@@ -245,9 +364,16 @@ async function updateOrderStatus(orderId, newStatus, adminNotes = '', adminName 
 // Отправка уведомления админу
 async function notifyAdmin(orderId, orderData, bot) {
   try {
+    console.log(`🔔 Отправка уведомления админу о заказе ${orderId}`);
+    
     const adminChatId = process.env.ADMIN_CHAT_ID_CHANEL || process.env.ADMIN_CHAT_ID;
     
-    if (!adminChatId) return;
+    if (!adminChatId) {
+      console.error('❌ ADMIN_CHAT_ID не установлен');
+      return;
+    }
+
+    console.log(`👤 Admin Chat ID: ${adminChatId}`);
 
     let itemsText = '';
     const items = orderData.items || [];
@@ -258,7 +384,7 @@ async function notifyAdmin(orderId, orderData, bot) {
     });
 
     const calculatedTotal = items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 0)), 0);
-    const userInfo = orderData.telegramUsername || `ID: ${orderData.userId || 'Неизвестен'}`;
+    const userInfo = orderData.userInfo || orderData.telegramUsername || `ID: ${orderData.userId || 'Неизвестен'}`;
 
     const actionKeyboard = {
       inline_keyboard: [
@@ -278,7 +404,7 @@ async function notifyAdmin(orderId, orderData, bot) {
 
     const message = `
 🆕 НОВЫЙ ЗАКАЗ #${orderId}
-👤 ${orderData.name}
+👤 ${orderData.customer || orderData.name}
 📞 ${orderData.phone}  
 🏠 ${orderData.address}
 👨‍💻 TG: ${userInfo}
@@ -290,17 +416,22 @@ ${itemsText}
 Итого: ${calculatedTotal}р
     `.trim();
     
+    console.log(`💬 Отправляем сообщение админу:`, message);
+    
     await bot.telegram.sendMessage(adminChatId, message, {
       reply_markup: actionKeyboard
     });
 
+    console.log('✅ Уведомление админу отправлено');
+    
   } catch (error) {
-    // Тихий fail
+    console.error('💥 Ошибка отправки уведомления админу:', error);
   }
 }
 
 // Настройка обработчиков кнопок для заказов
 function setupOrderHandlers(bot) {
+  console.log('⚙️ Настройка обработчиков заказов...');
   
   // Получаем имя админа для записи
   function getAdminName(ctx) {
@@ -309,6 +440,8 @@ function setupOrderHandlers(bot) {
 
   bot.action(/order_accept_(.+)/, async (ctx) => {
     try {
+      console.log(`🔄 Обработка принятия заказа: ${ctx.match[1]}`);
+      
       // Проверка прав администратора
       if (!isAdmin(ctx)) {
         await ctx.answerCbQuery('❌ Нет прав администратора');
@@ -406,6 +539,7 @@ function setupOrderHandlers(bot) {
       await ctx.answerCbQuery('👨‍🍳 Заказ готовится');
       
     } catch (error) {
+      console.error('Prepare order error:', error);
       await ctx.answerCbQuery('❌ Ошибка');
     }
   });
@@ -452,6 +586,7 @@ function setupOrderHandlers(bot) {
       await ctx.answerCbQuery('🚗 Заказ в доставке');
       
     } catch (error) {
+      console.error('Delivery order error:', error);
       await ctx.answerCbQuery('❌ Ошибка');
     }
   });
@@ -493,6 +628,7 @@ function setupOrderHandlers(bot) {
       await ctx.answerCbQuery('❌ Заказ отменен');
       
     } catch (error) {
+      console.error('Cancel order error:', error);
       await ctx.answerCbQuery('❌ Ошибка отмены');
     }
   });
@@ -534,9 +670,30 @@ function setupOrderHandlers(bot) {
       await ctx.answerCbQuery('✅ Заказ завершен');
       
     } catch (error) {
+      console.error('Complete order error:', error);
       await ctx.answerCbQuery('❌ Ошибка завершения');
     }
   });
+
+  console.log('✅ Обработчики заказов настроены');
+}
+
+// Тестовая функция для проверки подключения
+async function testConnection() {
+  try {
+    console.log('🧪 Тестирование подключения к Google Sheets...');
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Categories!A:B',
+    });
+    
+    console.log(`✅ Подключение работает! Найдено категорий: ${response.data.values?.length || 0}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка тестирования подключения:', error);
+    return false;
+  }
 }
 
 module.exports = { 
@@ -546,5 +703,6 @@ module.exports = {
   setupOrderHandlers,
   notifyCustomer,
   getOrderData,
-  isAdmin
+  isAdmin,
+  testConnection
 };
