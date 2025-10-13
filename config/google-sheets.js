@@ -1,29 +1,57 @@
 ﻿const { google } = require('googleapis');
 
-// 🔥 ОБНОВЛЕННЫЙ КОД ДЛЯ RAILWAY И ЛОКАЛЬНОЙ РАЗРАБОТКИ
+// 🔧 ИСПРАВЛЕННАЯ АУТЕНТИФИКАЦИЯ ДЛЯ RENDER
 function getAuth() {
-  if (process.env.GOOGLE_CREDENTIALS) {
-    // Для Railway - из переменной окружения
-    console.log('🔧 Использую credentials из переменных окружения');
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-    return new google.auth.GoogleAuth({
-      credentials: credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-  } else {
-    // Для локальной разработки - из файла
-    console.log('🔧 Использую credentials из файла');
-    return new google.auth.GoogleAuth({
-      keyFile: './credentials.json',
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+  console.log('🔐 Инициализация аутентификации Google Sheets...');
+  
+  // Проверяем наличие обязательных переменных
+  if (!process.env.GOOGLE_PRIVATE_KEY) {
+    console.error('❌ GOOGLE_PRIVATE_KEY не найден в переменных окружения');
+    throw new Error('GOOGLE_PRIVATE_KEY is required');
+  }
+  
+  if (!process.env.GOOGLE_CLIENT_EMAIL) {
+    console.error('❌ GOOGLE_CLIENT_EMAIL не найден в переменных окружения');
+    throw new Error('GOOGLE_CLIENT_EMAIL is required');
+  }
+
+  const SPREADSHEET_ID = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
+  if (!SPREADSHEET_ID) {
+    console.error('❌ SPREADSHEET_ID не найден в переменных окружения');
+    throw new Error('SPREADSHEET_ID is required');
+  }
+
+  console.log('✅ Переменные окружения найдены');
+  
+  try {
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL,
+      null,
+      process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    
+    console.log('✅ Аутентификация JWT создана');
+    return auth;
+  } catch (error) {
+    console.error('💥 Ошибка создания аутентификации:', error);
+    throw error;
   }
 }
 
-const auth = getAuth();
-const sheets = google.sheets({ version: 'v4', auth });
+// Инициализация глобальных переменных
+let auth;
+let sheets;
+let SPREADSHEET_ID;
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+try {
+  auth = getAuth();
+  sheets = google.sheets({ version: 'v4', auth });
+  SPREADSHEET_ID = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
+  console.log('✅ Google Sheets клиент инициализирован');
+} catch (error) {
+  console.error('💥 Критическая ошибка инициализации Google Sheets:', error);
+}
 
 // Функция с таймаутом
 function withTimeout(promise, timeoutMs = 10000) {
@@ -39,6 +67,7 @@ function withTimeout(promise, timeoutMs = 10000) {
 async function getCategories() {
   try {
     console.log('📊 Загрузка категорий...');
+    console.log('📋 SPREADSHEET_ID:', SPREADSHEET_ID);
     
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
@@ -112,7 +141,7 @@ async function getProductById(productId) {
   }
 }
 
-// 🔥 НОВАЯ функция для получения названия категории по ID
+// Функция для получения названия категории по ID
 async function getCategoryName(categoryId) {
   try {
     const response = await withTimeout(sheets.spreadsheets.values.get({
@@ -131,9 +160,28 @@ async function getCategoryName(categoryId) {
   }
 }
 
+// Тестовая функция для проверки подключения
+async function testConnection() {
+  try {
+    console.log('🧪 Тестирование подключения к Google Sheets...');
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Categories!A:B',
+    });
+    
+    console.log(`✅ Подключение работает! Найдено категорий: ${response.data.values?.length || 0}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка тестирования подключения:', error);
+    return false;
+  }
+}
+
 module.exports = { 
   getCategories, 
   getProductsByCategory, 
   getProductById, 
-  getCategoryName
+  getCategoryName,
+  testConnection
 };
