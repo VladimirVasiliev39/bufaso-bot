@@ -1,4 +1,14 @@
 ﻿require('dotenv').config();
+// 🔧 Polyfill for Node.js 16 (безопасно для продакшена)
+let fetch;
+if (typeof global.fetch === 'function') {
+  // Используем встроенный fetch в Node.js 18+
+  fetch = global.fetch;
+} else {
+  // Используем node-fetch для Node.js 16
+  fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+}
+
 console.log('=== BUFASO BOT STARTING ===');
 console.log('Node environment:', process.env.NODE_ENV);
 console.log('Render check:', process.env.RENDER ? '✅ Running on Render' : '❌ Local');
@@ -23,14 +33,25 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     timestamp: new Date().toISOString(),
     service: 'BuFaso Bot',
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    pingSettings: {
+      interval: process.env.PING_INTERVAL_MINUTES || '14 (default)',
+      delay: process.env.PING_START_DELAY_MINUTES || '1 (default)'
+    }
   });
 });
 
-// 🔧 ДОБАВЛЕНО: Auto-ping для Render
+// 🔧 ОБНОВЛЕНО: Auto-ping с настраиваемыми интервалами
 const startKeepAlive = () => {
-  const pingInterval = 14 * 60 * 1000; // 14 минут
+  // Читаем настройки из переменных окружения
+  const pingIntervalMinutes = parseInt(process.env.PING_INTERVAL_MINUTES) || 14;
+  const startDelayMinutes = parseInt(process.env.PING_START_DELAY_MINUTES) || 1;
   
+  const pingInterval = pingIntervalMinutes * 60 * 1000; // в миллисекунды
+  const startDelay = startDelayMinutes * 60 * 1000; // в миллисекунды
+  
+  console.log(`🔄 Keep-alive настроен: интервал ${pingIntervalMinutes} мин, задержка старта ${startDelayMinutes} мин`);
+
   const pingServer = async () => {
     try {
       const baseUrl = process.env.RENDER_EXTERNAL_URL || 'https://bufaso-bot.onrender.com';
@@ -41,10 +62,10 @@ const startKeepAlive = () => {
     }
   };
   
-  // Первый пинг через 1 минуту после старта
-  setTimeout(pingServer, 60000);
+  // Первый пинг через заданную задержку
+  setTimeout(pingServer, startDelay);
   
-  // Затем каждые 14 минут
+  // Затем каждые N минут
   setInterval(pingServer, pingInterval);
   
   console.log('✅ Keep-alive system started');
