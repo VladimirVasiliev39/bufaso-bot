@@ -83,6 +83,52 @@ handleStart(bot);
 handleMainMenu(bot);
 setupOrderHandlers(bot);
 
+//=====================Тесты для расширенной таблицы===================
+// Тест мультиценовой системы
+bot.command('test_multiprice', async (ctx) => {
+  try {
+    const googleSheets = require('./config/google-sheets');
+    const result = await googleSheets.testMultiPrice();
+    
+    if (result) {
+      await ctx.reply('✅ Мультиценовая система работает!');
+    } else {
+      await ctx.reply('❌ Ошибка в мультиценовой системе');
+    }
+  } catch (error) {
+    await ctx.reply(`💥 Ошибка: ${error.message}`);
+  }
+});
+
+// Тест конкретного товара
+bot.command('test_product', async (ctx) => {
+  try {
+    const googleSheets = require('./config/google-sheets');
+    const productId = '1'; // Измени на ID твоего тестового товара
+    const product = await googleSheets.getProductById(productId);
+    
+    if (product) {
+      const variantsText = product.variants.map(v => 
+        `• ${v.price} руб / ${v.ed_izm} (${v.variantId})`
+      ).join('\n');
+      
+      await ctx.reply(
+        `📦 ${product.name}\n` +
+        `📊 Вариантов: ${product.variants.length}\n\n` +
+        `💰 Цены:\n${variantsText}`
+      );
+    } else {
+      await ctx.reply('❌ Товар не найден');
+    }
+  } catch (error) {
+    await ctx.reply(`💥 Ошибка: ${error.message}`);
+  }
+});
+//=====================================================================
+
+
+
+
 // Запуск Express сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

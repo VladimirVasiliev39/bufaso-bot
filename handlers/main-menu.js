@@ -1,5 +1,5 @@
-﻿const { getCategories, getProductsByCategory, getProductById, getCategoryName } = require('../config/google-sheets');
-const { buildMainMenu, buildProductsKeyboard } = require('../utils/keyboard-builder');
+﻿const { getCategories, getProductsByCategory, getProductById, getProductWithVariant, getCategoryName } = require('../config/google-sheets');
+const { buildMainMenu, buildProductsKeyboard, buildPriceVariantsKeyboard, formatPriceVariants } = require('../utils/keyboard-builder');
 const { addToCart, formatCartMessage, getCartItemsCount, getCartTotal, formatMiniCart } = require('../utils/cart-manager');
 const { getProductImage } = require('../utils/image-handler');
 const { createOrder, notifyAdmin } = require('../utils/order-manager');
@@ -139,32 +139,48 @@ function handleMainMenu(bot) {
     }
   });
 
-  // 🔥 Карточка товара (ЧИСТЫЙ интерфейс)
-  bot.action(/product_(.+)/, async (ctx) => {
-    try {
-      const productId = ctx.match[1];
+  // 🔥 КАРТОЧКА ТОВАРА (ОБНОВЛЕННАЯ - единый формат для всех товаров)
+bot.action(/product_(.+)/, async (ctx) => {
+  try {
+    const productId = ctx.match[1];
+    
+    const product = await getProductById(productId);
+    
+    if (!product) {
+      await ctx.answerCbQuery('❌ Товар не найден');
+      return;
+    }
+    
+    // 🔥 ЕДИНЫЙ ФОРМАТ: Всегда показываем список цен
+    const priceVariantsText = formatPriceVariants(product.variants);
+    
+    // 🔥 НОВАЯ ЛОГИКА: Если у товара несколько вариантов цен - показываем выбор
+    if (product.hasMultipleVariants) {
+      const variantKeyboard = buildPriceVariantsKeyboard(product.variants, productId, product.categoryId);
       
-      const product = await getProductById(productId);
-      
-      if (!product) {
-        await ctx.answerCbQuery('❌ Товар не найден');
-        return;
-      }
-      
-      const categoryId = product.categoryId;
+      await ctx.editMessageCaption(
+        `🍕 <b>${product.name}</b>\n📝 ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: variantKeyboard }
+        }
+      );
+    } else {
+      // 🔥 ЕСЛИ ТОЛЬКО ОДИН ВАРИАНТ - сразу переходим к выбору количества
       const quantity = 1;
+      const variantId = product.variants[0].variantId;
       
       const quantityKeyboard = [
         [
-          { text: '➖', callback_data: `decrease_${productId}_${categoryId}` },
+          { text: '➖', callback_data: `decrease_${productId}_${product.categoryId}_${variantId}` },
           { text: ` ${quantity} `, callback_data: `display_quantity_${productId}` },
-          { text: '➕', callback_data: `increase_${productId}_${categoryId}` }
+          { text: '➕', callback_data: `increase_${productId}_${product.categoryId}_${variantId}` }
         ],
         [
-          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${quantity}` }
+          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${quantity}_${variantId}` }
         ],
         [
-          { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${categoryId}` }
+          { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${product.categoryId}` }
         ]
       ];
       
@@ -172,25 +188,27 @@ function handleMainMenu(bot) {
         {
           type: 'photo', 
           media: { source: getProductImage(product.id, product.image) },
-          caption: `🍕 ${product.name}\n💰 ${product.price}р\n📝 ${product.description}\n\nКоличество: ${quantity}`
+          caption: `🍕 ${product.name}\n📝 ${product.description}${priceVariantsText}\n\nКоличество: ${quantity}`
         },
         {
           reply_markup: { inline_keyboard: quantityKeyboard }
         }
       );
-      
-      await ctx.answerCbQuery();
-      
-    } catch (error) {
-      await ctx.answerCbQuery('⚠️ Ошибка');
     }
-  });
+    
+    await ctx.answerCbQuery();
+    
+  } catch (error) {
+    await ctx.answerCbQuery('⚠️ Ошибка');
+  }
+});
 
-  // 🔥 Увеличение количества (в карточке товара)
-  bot.action(/increase_(.+)_(.+)/, async (ctx) => {
+  // 🔥 Увеличение количества (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
+  bot.action(/increase_(.+)_(.+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const categoryId = ctx.match[2];
+      const variantId = ctx.match[3];
       
       const messageText = ctx.update.callback_query.message.caption;
       const currentMatch = messageText.match(/Количество: (\d+)/);
@@ -203,17 +221,19 @@ function handleMainMenu(bot) {
         return;
       }
       
+      const product = await getProductWithVariant(productId, variantId);
+      
       const quantityKeyboard = [
         [
-          { text: '➖', callback_data: `decrease_${productId}_${categoryId}` },
+          { text: '➖', callback_data: `decrease_${productId}_${categoryId}_${variantId}` },
           { text: ` ${newQuantity} `, callback_data: `display_quantity_${productId}` },
-          { text: '➕', callback_data: `increase_${productId}_${categoryId}` }
+          { text: '➕', callback_data: `increase_${productId}_${categoryId}_${variantId}` }
         ],
         [
-          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${newQuantity}` }
+          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${newQuantity}_${variantId}` }
         ],
         [
-          { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${categoryId}` }
+          { text: '⬅️ Назад к вариантам', callback_data: `product_${productId}` }
         ]
       ];
       
@@ -231,11 +251,12 @@ function handleMainMenu(bot) {
     }
   });
 
-  // 🔥 Уменьшение количества (в карточке товара)
-  bot.action(/decrease_(.+)_(.+)/, async (ctx) => {
+  // 🔥 Уменьшение количества (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
+  bot.action(/decrease_(.+)_(.+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const categoryId = ctx.match[2];
+      const variantId = ctx.match[3];
       
       const messageText = ctx.update.callback_query.message.caption;
       const currentMatch = messageText.match(/Количество: (\d+)/);
@@ -248,17 +269,19 @@ function handleMainMenu(bot) {
         return;
       }
       
+      const product = await getProductWithVariant(productId, variantId);
+      
       const quantityKeyboard = [
         [
-          { text: '➖', callback_data: `decrease_${productId}_${categoryId}` },
+          { text: '➖', callback_data: `decrease_${productId}_${categoryId}_${variantId}` },
           { text: ` ${newQuantity} `, callback_data: `display_quantity_${productId}` },
-          { text: '➕', callback_data: `increase_${productId}_${categoryId}` }
+          { text: '➕', callback_data: `increase_${productId}_${categoryId}_${variantId}` }
         ],
         [
-          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${newQuantity}` }
+          { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${newQuantity}_${variantId}` }
         ],
         [
-          { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${categoryId}` }
+          { text: '⬅️ Назад к вариантам', callback_data: `product_${productId}` }
         ]
       ];
       
@@ -276,28 +299,32 @@ function handleMainMenu(bot) {
     }
   });
 
-  // 🔥 Добавление в корзину (ВОЗВРАЩАЕМ с мини-корзиной)
-  bot.action(/add_to_cart_(.+)_(.+)/, async (ctx) => {
+  // 🔥 Добавление в корзину (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
+  bot.action(/add_to_cart_(.+)_(.+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const quantity = parseInt(ctx.match[2]);
+      const variantId = ctx.match[3];
       
-      const product = await getProductById(productId);
+      const product = await getProductWithVariant(productId, variantId);
       
       if (!product) {
         await ctx.answerCbQuery('❌ Товар не найден');
         return;
       }
       
+      // 🔥 ОБНОВЛЕНО: Передаем вариант цены в корзину
       ctx.session.cart = addToCart(
         ctx.session.cart || [],
         product.id, 
         product.name, 
-        parseInt(product.price),
-        quantity
+        product.selectedPrice,
+        quantity,
+        product.selectedEdIzm,
+        variantId
       );
       
-      await ctx.answerCbQuery(`✅ ${product.name} × ${quantity} шт. добавлено в корзину!`);
+      await ctx.answerCbQuery(`✅ ${product.name} (${product.selectedEdIzm}) × ${quantity} шт. добавлено в корзину!`);
       
       const products = await getProductsByCategory(product.categoryId);
       const categoryName = await getCategoryName(product.categoryId);

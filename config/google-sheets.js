@@ -86,13 +86,14 @@ async function getCategories() {
 }
 
 // Получение товаров по категории
+// Получение товаров по категории (ОБНОВЛЕННАЯ ВЕРСИЯ)
 async function getProductsByCategory(categoryId) {
   try {
     console.log(`📦 Загрузка товаров для категории ${categoryId}...`);
     
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Products!A2:F',
+      range: 'Products!A2:G', // ← ОБНОВЛЕНО: читаем до колонки G
     }), 15000);
     
     const products = response.data.values || [];
@@ -107,14 +108,14 @@ async function getProductsByCategory(categoryId) {
   }
 }
 
-// Получение товара по ID
+// 🔧 ОБНОВЛЕННАЯ ФУНКЦИЯ: Получение товара по ID с поддержкой мультицен
 async function getProductById(productId) {
   try {
     console.log(`🔍 Поиск товара по ID: ${productId}`);
     
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: 'Products!A2:F',
+      range: 'Products!A2:O', // ← ОБНОВЛЕНО: читаем до колонки O
     }), 15000);
     
     const products = response.data.values || [];
@@ -122,14 +123,58 @@ async function getProductById(productId) {
     
     if (product) {
       console.log(`✅ Товар найден:`, product[2]);
-      return {
+      
+      // Основная цена и единица измерения
+      const mainPrice = product[3];
+      const mainEdIzm = product[6] || 'шт';
+      
+      // Собираем ВСЕ варианты цен (основная + дополнительные)
+      const variants = [];
+      
+      // Добавляем основную цену (если не пустая)
+      if (mainPrice && mainPrice > 0) {
+        variants.push({
+          price: parseFloat(mainPrice),
+          ed_izm: mainEdIzm,
+          isMain: true,
+          variantId: 'main'
+        });
+      }
+      
+      // Добавляем дополнительные цены (Cena1 - Cena4)
+      for (let i = 1; i <= 4; i++) {
+        const cenaIndex = 7 + (i - 1) * 2; // H, J, L, N
+        const edIzmIndex = cenaIndex + 1;   // I, K, M, O
+        
+        const cena = product[cenaIndex];
+        const edIzm = product[edIzmIndex];
+        
+        // Добавляем только если цена не пустая и больше 0
+        if (cena && !isNaN(cena) && parseFloat(cena) > 0) {
+          variants.push({
+            price: parseFloat(cena),
+            ed_izm: edIzm || 'шт',
+            variantId: `variant_${i}`
+          });
+        }
+      }
+      
+      // Сортируем варианты по цене (от меньшей к большей)
+      variants.sort((a, b) => a.price - b.price);
+      
+      const productData = {
         id: product[0],
         categoryId: product[1],
         name: product[2],
-        price: product[3],
+        price: parseFloat(mainPrice), // для обратной совместимости
         description: product[4] || 'Описание отсутствует',
-        image: product[5] || 'product_default.jpg'
+        image: product[5] || 'product_default.jpg',
+        variants: variants, // ← НОВОЕ ПОЛЕ: массив всех вариантов
+        hasMultipleVariants: variants.length > 1 // флаг множественных вариантов
       };
+      
+      console.log(`📊 Найдено вариантов цен: ${variants.length}`, variants);
+      return productData;
     }
     
     console.log('❌ Товар с ID', productId, 'не найден');
@@ -137,6 +182,51 @@ async function getProductById(productId) {
     
   } catch (error) {
     console.error('❌ Ошибка поиска товара по ID:', error.message);
+    return null;
+  }
+}
+
+// 🔧 НОВАЯ ФУНКЦИЯ: Получение товара по ID с вариантом цены
+async function getProductWithVariant(productId, variantId) {
+  try {
+    const product = await getProductById(productId);
+    
+    if (!product) return null;
+    
+    // Если variantId не указан, возвращаем основной вариант
+    if (!variantId || variantId === 'main') {
+      const mainVariant = product.variants.find(v => v.isMain) || product.variants[0];
+      return {
+        ...product,
+        selectedVariant: mainVariant,
+        selectedPrice: mainVariant.price,
+        selectedEdIzm: mainVariant.ed_izm
+      };
+    }
+    
+    // Ищем указанный вариант
+    const selectedVariant = product.variants.find(v => v.variantId === variantId);
+    
+    if (selectedVariant) {
+      return {
+        ...product,
+        selectedVariant: selectedVariant,
+        selectedPrice: selectedVariant.price,
+        selectedEdIzm: selectedVariant.ed_izm
+      };
+    }
+    
+    // Если вариант не найден, возвращаем основной
+    const mainVariant = product.variants.find(v => v.isMain) || product.variants[0];
+    return {
+      ...product,
+      selectedVariant: mainVariant,
+      selectedPrice: mainVariant.price,
+      selectedEdIzm: mainVariant.ed_izm
+    };
+    
+  } catch (error) {
+    console.error('❌ Ошибка получения товара с вариантом:', error.message);
     return null;
   }
 }
@@ -178,10 +268,46 @@ async function testConnection() {
   }
 }
 
+// 🔧 НОВАЯ ФУНКЦИЯ: Тестирование мультиценовой системы
+async function testMultiPrice() {
+  try {
+    console.log('🧪 Тестирование мультиценовой системы...');
+    
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Products!A2:O',
+    });
+    
+    const products = response.data.values || [];
+    console.log(`📊 Всего товаров: ${products.length}`);
+    
+    // Протестируем первые 3 товара
+    for (let i = 0; i < Math.min(3, products.length); i++) {
+      const product = products[i];
+      if (product && product[0]) {
+        const productData = await getProductById(product[0]);
+        if (productData) {
+          console.log(`📦 ${productData.name}: ${productData.variants.length} вариантов`);
+          productData.variants.forEach(v => {
+            console.log(`   💰 ${v.price} руб / ${v.ed_izm} (${v.variantId})`);
+          });
+        }
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Ошибка тестирования мультицен:', error);
+    return false;
+  }
+}
+
 module.exports = { 
   getCategories, 
   getProductsByCategory, 
   getProductById, 
+  getProductWithVariant,
   getCategoryName,
-  testConnection
+  testConnection,
+  testMultiPrice
 };
