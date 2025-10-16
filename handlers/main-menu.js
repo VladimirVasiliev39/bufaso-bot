@@ -59,7 +59,7 @@ function handleMainMenu(bot) {
           await ctx.replyWithPhoto(
             { source: './assets/vitrina.jpg' },
             {
-              caption: '🍕 Меню',
+              caption: '⬇️ Меню',
               parse_mode: 'HTML',
               reply_markup: { inline_keyboard: keyboard }
             }
@@ -127,7 +127,7 @@ function handleMainMenu(bot) {
         {
           type: 'photo',
           media: { source: imagePath },
-          caption: `<b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${quantity}</b>`,
+          caption: `🪴 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${quantity}</b>`,
           parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
@@ -182,7 +182,7 @@ function handleMainMenu(bot) {
       const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
       
       await ctx.editMessageCaption(
-        `🍕 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
+        `🪴 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
         {
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: quantityKeyboard }
@@ -235,7 +235,7 @@ function handleMainMenu(bot) {
       const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
       
       await ctx.editMessageCaption(
-        `🍕 <b>${product.name}</b>\n\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
+        `🪴 <b>${product.name}</b>\n\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
         {
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: quantityKeyboard }
@@ -286,7 +286,7 @@ function handleMainMenu(bot) {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}${miniCart}`,
+          caption: `🌴 ${categoryName}${miniCart}`,
           parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
@@ -333,7 +333,7 @@ function handleMainMenu(bot) {
           {
             type: 'photo',
             media: { source: imagePath },
-            caption: `<b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
+            caption: `🪴 <b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
             parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
           },
           {
@@ -363,7 +363,7 @@ function handleMainMenu(bot) {
           {
             type: 'photo', 
             media: { source: imagePath },
-            caption: `<b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n🛒 Количество: <b>${quantity}</b>`,
+            caption: `🪴 <b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n🛒 Количество: <b>${quantity}</b>`,
             parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
           },
           {
@@ -394,7 +394,7 @@ function handleMainMenu(bot) {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}${miniCart}`,
+          caption: `🌴 ${categoryName}${miniCart}`,
           parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
@@ -460,7 +460,7 @@ function handleMainMenu(bot) {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}`,
+          caption: `🌴 ${categoryName}`,
           parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
