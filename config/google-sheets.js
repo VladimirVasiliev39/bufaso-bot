@@ -48,7 +48,7 @@ try {
   auth = getAuth();
   sheets = google.sheets({ version: 'v4', auth });
   SPREADSHEET_ID = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
-  console.log('✅ Google Sheets клиент инициализирован');
+  console.log('✅ Google Sheets клиент инициализирован, SPREADSHEET_ID:', SPREADSHEET_ID);
 } catch (error) {
   console.error('💥 Критическая ошибка инициализации Google Sheets:', error);
 }
@@ -63,11 +63,53 @@ function withTimeout(promise, timeoutMs = 10000) {
   ]);
 }
 
+// 🔥 НОВАЯ ФУНКЦИЯ: Загрузка всех товаров (для кэширования)
+let allProductsCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 60000; // 1 минута
+
+async function loadAllProducts() {
+  const now = Date.now();
+  
+  // Если кэш актуален, возвращаем его
+  if (allProductsCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION) {
+    return allProductsCache;
+  }
+  
+  try {
+    console.log('📦 Загрузка всех товаров из Google Sheets...');
+    
+    const response = await withTimeout(sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Products!A2:O',
+    }), 15000);
+    
+    const products = response.data.values || [];
+    console.log(`✅ Загружено товаров: ${products.length}`);
+    
+    // Сохраняем в кэш
+    allProductsCache = products;
+    cacheTimestamp = now;
+    
+    return products;
+    
+  } catch (error) {
+    console.error('❌ Ошибка загрузки всех товаров:', error.message);
+    
+    // Если есть старый кэш, возвращаем его
+    if (allProductsCache) {
+      console.log('⚠️ Используем кэшированные данные');
+      return allProductsCache;
+    }
+    
+    return [];
+  }
+}
+
 // Получение категорий из таблицы
 async function getCategories() {
   try {
     console.log('📊 Загрузка категорий...');
-    console.log('📋 SPREADSHEET_ID:', SPREADSHEET_ID);
     
     const response = await withTimeout(sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
@@ -86,17 +128,11 @@ async function getCategories() {
 }
 
 // Получение товаров по категории
-// Получение товаров по категории (ОБНОВЛЕННАЯ ВЕРСИЯ)
 async function getProductsByCategory(categoryId) {
   try {
     console.log(`📦 Загрузка товаров для категории ${categoryId}...`);
     
-    const response = await withTimeout(sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Products!A2:G', // ← ОБНОВЛЕНО: читаем до колонки G
-    }), 15000);
-    
-    const products = response.data.values || [];
+    const products = await loadAllProducts();
     const filteredProducts = products.filter(product => product[1] === categoryId);
     
     console.log(`✅ Для категории ${categoryId} найдено товаров:`, filteredProducts.length);
@@ -108,77 +144,91 @@ async function getProductsByCategory(categoryId) {
   }
 }
 
-// 🔧 ОБНОВЛЕННАЯ ФУНКЦИЯ: Получение товара по ID с поддержкой мультицен
+// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ: Получение вариантов цен
+function getPriceVariants(product) {
+  const variants = [];
+  
+  // Основная цена (всегда добавляем, если есть)
+  if (product.price && product.price > 0) {
+    variants.push({
+      price: product.price,
+      ed_izm: product.ed_izm || 'шт',
+      isMain: true,
+      variantId: 'main'
+    });
+  }
+  
+  // Дополнительные варианты цен
+  const variantPairs = [
+    { price: product.cena1, ed_izm: product.ed_izm1, suffix: 'variant_1' },
+    { price: product.cena2, ed_izm: product.ed_izm2, suffix: 'variant_2' },
+    { price: product.cena3, ed_izm: product.ed_izm3, suffix: 'variant_3' },
+    { price: product.cena4, ed_izm: product.ed_izm4, suffix: 'variant_4' }
+  ];
+  
+  variantPairs.forEach(pair => {
+    if (pair.price && pair.price > 0 && pair.ed_izm && pair.ed_izm.trim() !== '') {
+      variants.push({
+        price: pair.price,
+        ed_izm: pair.ed_izm,
+        variantId: pair.suffix
+      });
+    }
+  });
+  
+  console.log(`📊 Для товара "${product.name}" найдено вариантов: ${variants.length}`);
+  
+  return variants;
+}
+
+// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ: Поиск товара по ID
 async function getProductById(productId) {
   try {
-    console.log(`🔍 Поиск товара по ID: ${productId}`);
+    console.log(`🔍 DEBUG getProductById: поиск ID="${productId}", тип=${typeof productId}`);
     
-    const response = await withTimeout(sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Products!A2:O', // ← ОБНОВЛЕНО: читаем до колонки O
-    }), 15000);
-    
-    const products = response.data.values || [];
-    const product = products.find(p => p[0] === productId);
-    
-    if (product) {
-      console.log(`✅ Товар найден:`, product[2]);
-      
-      // Основная цена и единица измерения
-      const mainPrice = product[3];
-      const mainEdIzm = product[6] || 'шт';
-      
-      // Собираем ВСЕ варианты цен (основная + дополнительные)
-      const variants = [];
-      
-      // Добавляем основную цену (если не пустая)
-      if (mainPrice && mainPrice > 0) {
-        variants.push({
-          price: parseFloat(mainPrice),
-          ed_izm: mainEdIzm,
-          isMain: true,
-          variantId: 'main'
-        });
-      }
-      
-      // Добавляем дополнительные цены (Cena1 - Cena4)
-      for (let i = 1; i <= 4; i++) {
-        const cenaIndex = 7 + (i - 1) * 2; // H, J, L, N
-        const edIzmIndex = cenaIndex + 1;   // I, K, M, O
-        
-        const cena = product[cenaIndex];
-        const edIzm = product[edIzmIndex];
-        
-        // Добавляем только если цена не пустая и больше 0
-        if (cena && !isNaN(cena) && parseFloat(cena) > 0) {
-          variants.push({
-            price: parseFloat(cena),
-            ed_izm: edIzm || 'шт',
-            variantId: `variant_${i}`
-          });
-        }
-      }
-      
-      // Сортируем варианты по цене (от меньшей к большей)
-      variants.sort((a, b) => a.price - b.price);
-      
-      const productData = {
-        id: product[0],
-        categoryId: product[1],
-        name: product[2],
-        price: parseFloat(mainPrice), // для обратной совместимости
-        description: product[4] || 'Описание отсутствует',
-        image: product[5] || 'product_default.jpg',
-        variants: variants, // ← НОВОЕ ПОЛЕ: массив всех вариантов
-        hasMultipleVariants: variants.length > 1 // флаг множественных вариантов
-      };
-      
-      console.log(`📊 Найдено вариантов цен: ${variants.length}`, variants);
-      return productData;
+    // 🔥 ДОБАВЛЕНА ПРОВЕРКА НА НЕПРАВИЛЬНЫЕ ID
+    if (typeof productId === 'string' && productId.includes('variant_') && productId.includes('_1_')) {
+      console.log(`🚨 ВНИМАНИЕ! Получен неправильный ID: ${productId}`);
+      console.log(`🚨 Это похоже на callback_data, а не на ID товара!`);
+      return null;
     }
     
-    console.log('❌ Товар с ID', productId, 'не найден');
-    return null;
+    const products = await loadAllProducts();
+    const productRow = products.find(row => row[0] == productId);
+    
+    if (!productRow) {
+      console.log(`❌ Товар с ID ${productId} не найден`);
+      return null;
+    }
+    
+    // Парсим данные товара
+    const product = {
+      id: productRow[0],
+      categoryId: productRow[1],
+      name: productRow[2],
+      price: parseFloat(productRow[3]) || 0,
+      description: productRow[4] || 'Описание отсутствует',
+      image: productRow[5] || 'product_default.jpg',
+      ed_izm: productRow[6] || 'шт',
+      cena1: parseFloat(productRow[7]) || 0,
+      ed_izm1: productRow[8] || '',
+      cena2: parseFloat(productRow[9]) || 0,
+      ed_izm2: productRow[10] || '',
+      cena3: parseFloat(productRow[11]) || 0,
+      ed_izm3: productRow[12] || '',
+      cena4: parseFloat(productRow[13]) || 0,
+      ed_izm4: productRow[14] || ''
+    };
+    
+    // Получаем варианты цен
+    const variants = getPriceVariants(product);
+    product.variants = variants;
+    product.hasMultipleVariants = variants.length > 1;
+    
+    console.log(`✅ Товар найден: "${product.name}"`);
+    console.log(`📊 Найдено вариантов цен: ${variants.length}`, variants);
+    
+    return product;
     
   } catch (error) {
     console.error('❌ Ошибка поиска товара по ID:', error.message);
@@ -186,47 +236,58 @@ async function getProductById(productId) {
   }
 }
 
-// 🔧 НОВАЯ ФУНКЦИЯ: Получение товара по ID с вариантом цены
+// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ: Поиск товара с вариантом цены
 async function getProductWithVariant(productId, variantId) {
   try {
+    console.log(`🔍 Поиск товара: ID=${productId}, вариант=${variantId}`);
+    
+    // Сначала находим основной товар
     const product = await getProductById(productId);
-    
-    if (!product) return null;
-    
-    // Если variantId не указан, возвращаем основной вариант
-    if (!variantId || variantId === 'main') {
-      const mainVariant = product.variants.find(v => v.isMain) || product.variants[0];
-      return {
-        ...product,
-        selectedVariant: mainVariant,
-        selectedPrice: mainVariant.price,
-        selectedEdIzm: mainVariant.ed_izm
-      };
+    if (!product) {
+      console.log(`❌ Основной товар ${productId} не найден`);
+      return null;
     }
     
-    // Ищем указанный вариант
-    const selectedVariant = product.variants.find(v => v.variantId === variantId);
+    // Получаем все варианты цен для товара
+    const variants = product.variants;
     
-    if (selectedVariant) {
-      return {
-        ...product,
-        selectedVariant: selectedVariant,
-        selectedPrice: selectedVariant.price,
-        selectedEdIzm: selectedVariant.ed_izm
-      };
+    // Ищем выбранный вариант
+    let selectedVariant;
+    
+    if (variantId === 'main') {
+      // Основной вариант
+      selectedVariant = variants.find(v => v.isMain) || variants[0];
+    } else {
+      // Дополнительный вариант
+      selectedVariant = variants.find(v => v.variantId === variantId);
     }
     
-    // Если вариант не найден, возвращаем основной
-    const mainVariant = product.variants.find(v => v.isMain) || product.variants[0];
+    if (!selectedVariant) {
+      console.log(`❌ Вариант ${variantId} не найден для товара ${productId}`);
+      // Возвращаем основной вариант как запасной
+      selectedVariant = variants.find(v => v.isMain) || variants[0];
+      if (!selectedVariant) {
+        return null;
+      }
+      console.log(`⚠️ Используем запасной вариант: ${selectedVariant.variantId}`);
+    }
+    
+    console.log(`✅ Найден вариант: ${selectedVariant.price}р / ${selectedVariant.ed_izm}`);
+    
+    // Возвращаем объект товара с выбранным вариантом
     return {
-      ...product,
-      selectedVariant: mainVariant,
-      selectedPrice: mainVariant.price,
-      selectedEdIzm: mainVariant.ed_izm
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      image: product.image,
+      selectedPrice: selectedVariant.price,
+      selectedEdIzm: selectedVariant.ed_izm,
+      variantId: selectedVariant.variantId
     };
     
   } catch (error) {
-    console.error('❌ Ошибка получения товара с вариантом:', error.message);
+    console.error('❌ Ошибка в getProductWithVariant:', error);
     return null;
   }
 }
@@ -268,46 +329,11 @@ async function testConnection() {
   }
 }
 
-// 🔧 НОВАЯ ФУНКЦИЯ: Тестирование мультиценовой системы
-async function testMultiPrice() {
-  try {
-    console.log('🧪 Тестирование мультиценовой системы...');
-    
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Products!A2:O',
-    });
-    
-    const products = response.data.values || [];
-    console.log(`📊 Всего товаров: ${products.length}`);
-    
-    // Протестируем первые 3 товара
-    for (let i = 0; i < Math.min(3, products.length); i++) {
-      const product = products[i];
-      if (product && product[0]) {
-        const productData = await getProductById(product[0]);
-        if (productData) {
-          console.log(`📦 ${productData.name}: ${productData.variants.length} вариантов`);
-          productData.variants.forEach(v => {
-            console.log(`   💰 ${v.price} руб / ${v.ed_izm} (${v.variantId})`);
-          });
-        }
-      }
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Ошибка тестирования мультицен:', error);
-    return false;
-  }
-}
-
 module.exports = { 
   getCategories, 
   getProductsByCategory, 
   getProductById, 
   getProductWithVariant,
   getCategoryName,
-  testConnection,
-  testMultiPrice
+  testConnection
 };

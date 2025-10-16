@@ -40,7 +40,6 @@ function handleMainMenu(bot) {
             `@${ctx.from.username}` : `ID: ${ctx.from.id}`;
           ctx.session.checkoutData.userId = ctx.from.id;
           
-          // 🔥 ПРАВИЛЬНОЕ СОХРАНЕНИЕ userChatId
           const userChatId = ctx.from.id;
           console.log('🔍 Сохраняем userChatId:', userChatId, 'тип:', typeof userChatId);
           ctx.session.checkoutData.userChatId = userChatId;
@@ -61,6 +60,7 @@ function handleMainMenu(bot) {
             { source: './assets/vitrina.jpg' },
             {
               caption: '🍕 Меню',
+              parse_mode: 'HTML',
               reply_markup: { inline_keyboard: keyboard }
             }
           );
@@ -68,6 +68,7 @@ function handleMainMenu(bot) {
       }
       
     } catch (error) {
+      console.error('❌ Ошибка обработки текста:', error);
       await ctx.reply('⚠️ Произошла ошибка при оформлении заказа. Попробуйте позже.');
       delete ctx.session.checkoutStep;
       delete ctx.session.checkoutData;
@@ -76,142 +77,83 @@ function handleMainMenu(bot) {
 
   // ========== ОБРАБОТЧИКИ ==========
   
-  // 🔥 Главное меню (категории)
-  bot.action('back_to_categories', async (ctx) => {
+  // 🔥 1. САМЫЕ КОНКРЕТНЫЕ ОБРАБОТЧИКИ
+  
+  // Обработчик выбора варианта цены
+  bot.action(/product_variant_(\d+)_(\d+)_(.+)/, async (ctx) => {
     try {
-      await ctx.answerCbQuery();
-      const categories = await getCategories();
-      const cartCount = getCartItemsCount(ctx.session.cart || []);
-      const keyboard = buildMainMenu(categories, cartCount);
+      console.log(`🎯 СРАБОТАЛ ОБРАБОТЧИК product_variant_!`);
+      const productId = ctx.match[1];
+      const categoryId = ctx.match[2];
+      const variantId = ctx.match[3];
       
-      const userId = ctx.from.id;
-      let caption = '🍕 Меню';
+      console.log(`🔍 Выбран вариант: product=${productId}, category=${categoryId}, variant=${variantId}`);
       
-      if (!userFirstLaunch.has(userId)) {
-        caption = '🍕 Добро пожаловать в BuFaso!\nВыберите категорию:';
-        userFirstLaunch.add(userId);
-      }
+      const product = await getProductWithVariant(productId, variantId);
       
-      await ctx.editMessageMedia(
-        {
-          type: 'photo',
-          media: { source: './assets/vitrina.jpg' },
-          caption: caption
-        },
-        {
-          reply_markup: { inline_keyboard: keyboard }
-        }
-      );
-      
-    } catch (error) {
-      await ctx.answerCbQuery('⚠️ Ошибка');
-    }
-  });
-
-  // 🔥 Выбор категории
-  bot.action(/category_(.+)/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      const categoryId = ctx.match[1];
-      const products = await getProductsByCategory(categoryId);
-      
-      if (products.length === 0) {
-        await ctx.answerCbQuery('😔 Нет товаров');
+      if (!product) {
+        await ctx.answerCbQuery('❌ Вариант товара не найден');
         return;
       }
       
-      const categoryName = await getCategoryName(categoryId);
-      const keyboard = buildProductsKeyboard(products);
-      
-      await ctx.editMessageMedia(
-        {
-          type: 'photo',
-          media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}`
-        },
-        {
-          reply_markup: { inline_keyboard: keyboard }
-        }
-      );
-      
-    } catch (error) {
-      await ctx.answerCbQuery('⚠️ Ошибка');
-    }
-  });
-
-  // 🔥 КАРТОЧКА ТОВАРА (ОБНОВЛЕННАЯ - единый формат для всех товаров)
-bot.action(/product_(.+)/, async (ctx) => {
-  try {
-    const productId = ctx.match[1];
-    
-    const product = await getProductById(productId);
-    
-    if (!product) {
-      await ctx.answerCbQuery('❌ Товар не найден');
-      return;
-    }
-    
-    // 🔥 ЕДИНЫЙ ФОРМАТ: Всегда показываем список цен
-    const priceVariantsText = formatPriceVariants(product.variants);
-    
-    // 🔥 НОВАЯ ЛОГИКА: Если у товара несколько вариантов цен - показываем выбор
-    if (product.hasMultipleVariants) {
-      const variantKeyboard = buildPriceVariantsKeyboard(product.variants, productId, product.categoryId);
-      
-      await ctx.editMessageCaption(
-        `🍕 <b>${product.name}</b>\n📝 ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: variantKeyboard }
-        }
-      );
-    } else {
-      // 🔥 ЕСЛИ ТОЛЬКО ОДИН ВАРИАНТ - сразу переходим к выбору количества
       const quantity = 1;
-      const variantId = product.variants[0].variantId;
       
       const quantityKeyboard = [
         [
-          { text: '➖', callback_data: `decrease_${productId}_${product.categoryId}_${variantId}` },
+          { text: '➖', callback_data: `decrease_${productId}_${categoryId}_${variantId}` },
           { text: ` ${quantity} `, callback_data: `display_quantity_${productId}` },
-          { text: '➕', callback_data: `increase_${productId}_${product.categoryId}_${variantId}` }
+          { text: '➕', callback_data: `increase_${productId}_${categoryId}_${variantId}` }
         ],
         [
           { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${quantity}_${variantId}` }
         ],
         [
-          { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${product.categoryId}` }
+          { text: '⬅️ Назад к вариантам', callback_data: `product_${productId}` }
         ]
       ];
       
+      const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
+      
+      let imagePath;
+      try {
+        imagePath = getProductImage(product.id, product.image);
+      } catch (error) {
+        console.log('⚠️ Не удалось загрузить фото, используем заглушку');
+        imagePath = './assets/product_default.jpg';
+      }
+      
+      // ✅ ПРАВИЛЬНОЕ ИСПОЛЬЗОВАНИЕ parse_mode для editMessageMedia
       await ctx.editMessageMedia(
         {
-          type: 'photo', 
-          media: { source: getProductImage(product.id, product.image) },
-          caption: `🍕 ${product.name}\n📝 ${product.description}${priceVariantsText}\n\nКоличество: ${quantity}`
+          type: 'photo',
+          media: { source: imagePath },
+          caption: `<b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${quantity}</b>`,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
           reply_markup: { inline_keyboard: quantityKeyboard }
         }
       );
+      
+      await ctx.answerCbQuery();
+      
+    } catch (error) {
+      console.error('❌ Ошибка в product_variant_:', error);
+      await ctx.answerCbQuery('⚠️ Ошибка выбора варианта');
     }
-    
-    await ctx.answerCbQuery();
-    
-  } catch (error) {
-    await ctx.answerCbQuery('⚠️ Ошибка');
-  }
-});
+  });
 
-  // 🔥 Увеличение количества (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
-  bot.action(/increase_(.+)_(.+)_(.+)/, async (ctx) => {
+  // Обработчики количества и корзины
+  bot.action(/increase_(\d+)_(\d+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const categoryId = ctx.match[2];
       const variantId = ctx.match[3];
       
+      console.log(`🔍 Увеличение: product=${productId}, category=${categoryId}, variant=${variantId}`);
+      
       const messageText = ctx.update.callback_query.message.caption;
-      const currentMatch = messageText.match(/Количество: (\d+)/);
+      const currentMatch = messageText.match(/Количество:.*?<b>(\d+)<\/b>/);
       let quantity = currentMatch ? parseInt(currentMatch[1]) : 1;
       
       const newQuantity = Math.min(quantity + 1, 10);
@@ -237,9 +179,12 @@ bot.action(/product_(.+)/, async (ctx) => {
         ]
       ];
       
+      const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
+      
       await ctx.editMessageCaption(
-        messageText.replace(/Количество: \d+/, `Количество: ${newQuantity}`),
+        `🍕 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
         {
+          parse_mode: 'HTML',
           reply_markup: { inline_keyboard: quantityKeyboard }
         }
       );
@@ -247,19 +192,21 @@ bot.action(/product_(.+)/, async (ctx) => {
       await ctx.answerCbQuery();
       
     } catch (error) {
+      console.error('❌ Ошибка в increase_:', error);
       await ctx.answerCbQuery('⚠️ Ошибка');
     }
   });
 
-  // 🔥 Уменьшение количества (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
-  bot.action(/decrease_(.+)_(.+)_(.+)/, async (ctx) => {
+  bot.action(/decrease_(\d+)_(\d+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const categoryId = ctx.match[2];
       const variantId = ctx.match[3];
       
+      console.log(`🔍 Уменьшение: product=${productId}, category=${categoryId}, variant=${variantId}`);
+      
       const messageText = ctx.update.callback_query.message.caption;
-      const currentMatch = messageText.match(/Количество: (\d+)/);
+      const currentMatch = messageText.match(/Количество:.*?<b>(\d+)<\/b>/);
       let quantity = currentMatch ? parseInt(currentMatch[1]) : 1;
       
       const newQuantity = Math.max(quantity - 1, 1);
@@ -285,9 +232,12 @@ bot.action(/product_(.+)/, async (ctx) => {
         ]
       ];
       
+      const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
+      
       await ctx.editMessageCaption(
-        messageText.replace(/Количество: \d+/, `Количество: ${newQuantity}`),
+        `🍕 <b>${product.name}</b>\n\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
         {
+          parse_mode: 'HTML',
           reply_markup: { inline_keyboard: quantityKeyboard }
         }
       );
@@ -295,16 +245,18 @@ bot.action(/product_(.+)/, async (ctx) => {
       await ctx.answerCbQuery();
       
     } catch (error) {
+      console.error('❌ Ошибка в decrease_:', error);
       await ctx.answerCbQuery('⚠️ Ошибка');
     }
   });
 
-  // 🔥 Добавление в корзину (ОБНОВЛЕННЫЙ - с поддержкой вариантов)
-  bot.action(/add_to_cart_(.+)_(.+)_(.+)/, async (ctx) => {
+  bot.action(/add_to_cart_(\d+)_(\d+)_(.+)/, async (ctx) => {
     try {
       const productId = ctx.match[1];
       const quantity = parseInt(ctx.match[2]);
       const variantId = ctx.match[3];
+      
+      console.log(`🔍 Добавление в корзину: product=${productId}, quantity=${quantity}, variant=${variantId}`);
       
       const product = await getProductWithVariant(productId, variantId);
       
@@ -313,7 +265,6 @@ bot.action(/product_(.+)/, async (ctx) => {
         return;
       }
       
-      // 🔥 ОБНОВЛЕНО: Передаем вариант цены в корзину
       ctx.session.cart = addToCart(
         ctx.session.cart || [],
         product.id, 
@@ -335,7 +286,8 @@ bot.action(/product_(.+)/, async (ctx) => {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}${miniCart}`
+          caption: `🍕 ${categoryName}${miniCart}`,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
           reply_markup: { inline_keyboard: keyboard }
@@ -343,11 +295,93 @@ bot.action(/product_(.+)/, async (ctx) => {
       );
       
     } catch (error) {
+      console.error('❌ Ошибка в add_to_cart_:', error);
       await ctx.answerCbQuery('⚠️ Ошибка добавления в корзину');
     }
   });
 
-  // 🔥 Возврат к товарам (с мини-корзиной если есть)
+  // 🔥 2. ОБРАБОТЧИКИ КАРТОЧЕК ТОВАРОВ
+  
+  bot.action(/product_(.+)/, async (ctx) => {
+    try {
+      const productId = ctx.match[1];
+      console.log(`🔍 Обработчик product_: ID=${productId}`);
+      
+      const product = await getProductById(productId);
+      
+      if (!product) {
+        await ctx.answerCbQuery('❌ Товар не найден');
+        return;
+      }
+      
+      const priceVariantsText = formatPriceVariants(product.variants);
+      
+      let imagePath;
+      try {
+        imagePath = getProductImage(product.id, product.image);
+      } catch (error) {
+        console.log('⚠️ Не удалось загрузить фото, используем заглушку');
+        imagePath = './assets/product_default.jpg';
+      }
+      
+      if (product.hasMultipleVariants) {
+        console.log(`🔧 Товар ${productId} имеет ${product.variants.length} вариантов, показываем выбор`);
+        
+        const variantKeyboard = buildPriceVariantsKeyboard(product.variants, productId, product.categoryId);
+        
+        await ctx.editMessageMedia(
+          {
+            type: 'photo',
+            media: { source: imagePath },
+            caption: `<b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
+            parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
+          },
+          {
+            reply_markup: { inline_keyboard: variantKeyboard }
+          }
+        );
+      } else {
+        console.log(`🔧 Товар ${productId} имеет 1 вариант, сразу показываем количество`);
+        const quantity = 1;
+        const variantId = product.variants[0].variantId;
+        
+        const quantityKeyboard = [
+          [
+            { text: '➖', callback_data: `decrease_${productId}_${product.categoryId}_${variantId}` },
+            { text: ` ${quantity} `, callback_data: `display_quantity_${productId}` },
+            { text: '➕', callback_data: `increase_${productId}_${product.categoryId}_${variantId}` }
+          ],
+          [
+            { text: '🛒 Добавить в корзину', callback_data: `add_to_cart_${productId}_${quantity}_${variantId}` }
+          ],
+          [
+            { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${product.categoryId}` }
+          ]
+        ];
+        
+        await ctx.editMessageMedia(
+          {
+            type: 'photo', 
+            media: { source: imagePath },
+            caption: `<b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n🛒 Количество: <b>${quantity}</b>`,
+            parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
+          },
+          {
+            reply_markup: { inline_keyboard: quantityKeyboard }
+          }
+        );
+      }
+      
+      await ctx.answerCbQuery();
+      
+    } catch (error) {
+      console.error('❌ Ошибка в product_:', error);
+      await ctx.answerCbQuery('⚠️ Ошибка загрузки товара');
+    }
+  });
+
+  // 🔥 3. ОБЩИЕ ОБРАБОТЧИКИ
+  
   bot.action(/back_to_products_(.+)/, async (ctx) => {
     try {
       const categoryId = ctx.match[1];
@@ -360,7 +394,8 @@ bot.action(/product_(.+)/, async (ctx) => {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: `🍕 ${categoryName}${miniCart}`
+          caption: `🍕 ${categoryName}${miniCart}`,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
           reply_markup: { inline_keyboard: keyboard }
@@ -369,11 +404,76 @@ bot.action(/product_(.+)/, async (ctx) => {
       
       await ctx.answerCbQuery();
     } catch (error) {
+      console.error('❌ Ошибка в back_to_products_:', error);
       await ctx.answerCbQuery('⚠️ Ошибка');
     }
   });
 
-  // 🔥 Корзина (полный интерфейс)
+  bot.action('back_to_categories', async (ctx) => {
+    try {
+      await ctx.answerCbQuery();
+      const categories = await getCategories();
+      const cartCount = getCartItemsCount(ctx.session.cart || []);
+      const keyboard = buildMainMenu(categories, cartCount);
+      
+      const userId = ctx.from.id;
+      let caption = 'Меню';
+      
+      if (!userFirstLaunch.has(userId)) {
+        caption = 'Добро пожаловать в каталог!\nВыберите категорию:';
+        userFirstLaunch.add(userId);
+      }
+      
+      await ctx.editMessageMedia(
+        {
+          type: 'photo',
+          media: { source: './assets/vitrina.jpg' },
+          caption: caption,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
+        },
+        {
+          reply_markup: { inline_keyboard: keyboard }
+        }
+      );
+      
+    } catch (error) {
+      console.error('❌ Ошибка в back_to_categories:', error);
+      await ctx.answerCbQuery('⚠️ Ошибка');
+    }
+  });
+
+  bot.action(/category_(.+)/, async (ctx) => {
+    try {
+      await ctx.answerCbQuery();
+      const categoryId = ctx.match[1];
+      const products = await getProductsByCategory(categoryId);
+      
+      if (products.length === 0) {
+        await ctx.answerCbQuery('😔 Нет товаров');
+        return;
+      }
+      
+      const categoryName = await getCategoryName(categoryId);
+      const keyboard = buildProductsKeyboard(products);
+      
+      await ctx.editMessageMedia(
+        {
+          type: 'photo',
+          media: { source: './assets/vitrina.jpg' },
+          caption: `🍕 ${categoryName}`,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
+        },
+        {
+          reply_markup: { inline_keyboard: keyboard }
+        }
+      );
+      
+    } catch (error) {
+      console.error('❌ Ошибка в category_:', error);
+      await ctx.answerCbQuery('⚠️ Ошибка');
+    }
+  });
+
   bot.action('cart', async (ctx) => {
     try {
       await ctx.answerCbQuery();
@@ -399,7 +499,8 @@ bot.action(/product_(.+)/, async (ctx) => {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: cartMessage
+          caption: cartMessage,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
           reply_markup: { inline_keyboard: cartKeyboard }
@@ -407,11 +508,11 @@ bot.action(/product_(.+)/, async (ctx) => {
       );
       
     } catch (error) {
+      console.error('❌ Ошибка в cart:', error);
       await ctx.answerCbQuery('⚠️ Ошибка загрузки корзины');
     }
   });
 
-  // 🔥 Очистка корзины
   bot.action('clear_cart', async (ctx) => {
     try {
       ctx.session.cart = [];
@@ -426,7 +527,8 @@ bot.action(/product_(.+)/, async (ctx) => {
         {
           type: 'photo',
           media: { source: './assets/vitrina.jpg' },
-          caption: cartMessage
+          caption: cartMessage,
+          parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
           reply_markup: { inline_keyboard: cartKeyboard }
@@ -434,11 +536,11 @@ bot.action(/product_(.+)/, async (ctx) => {
       );
       
     } catch (error) {
+      console.error('❌ Ошибка в clear_cart:', error);
       await ctx.answerCbQuery('⚠️ Ошибка очистки корзины');
     }
   });
 
-  // 🔥 Начало оформления заказа
   bot.action('start_checkout', async (ctx) => {
     try {
       const cart = ctx.session.cart || [];
@@ -454,11 +556,11 @@ bot.action(/product_(.+)/, async (ctx) => {
       ctx.session.checkoutStep = 'waiting_name';
       
     } catch (error) {
+      console.error('❌ Ошибка в start_checkout:', error);
       await ctx.answerCbQuery('⚠️ Ошибка');
     }
   });
 
-  // Просто отображаем количество
   bot.action(/display_quantity_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
   });

@@ -50,11 +50,11 @@ function buildProductsKeyboard(products) {
     if (products[i]) {
       let price = parseFloat(products[i][3]);
       let priceText = Number.isInteger(price) ? price.toString() : price.toFixed(2);
-      let productName = truncateText(products[i][2], 20); // Обрезаем длинные названия до 15
-      let edIzm = products[i][6] || 'шт'; // Берем единицу измерения из колонки G
+      let productName = truncateText(products[i][2], 20);
+      let edIzm = products[i][6] || 'шт';
       
       row.push({
-        text: `${productName}\n${priceText}р / ${truncateText(edIzm, 8)}`,//обрезаем до 6
+        text: `${productName}\n${priceText}р / ${truncateText(edIzm, 8)}`,
         callback_data: `product_${products[i][0]}`
       });
     }
@@ -63,8 +63,8 @@ function buildProductsKeyboard(products) {
     if (products[i + 1]) {
       let price = parseFloat(products[i + 1][3]);
       let priceText = Number.isInteger(price) ? price.toString() : price.toFixed(2);
-      let productName = truncateText(products[i + 1][2], 15); // Обрезаем длинные названия
-      let edIzm = products[i + 1][6] || 'шт'; // Берем единицу измерения из колонки G
+      let productName = truncateText(products[i + 1][2], 15);
+      let edIzm = products[i + 1][6] || 'шт';
       
       row.push({
         text: `${productName}\n${priceText}р / ${truncateText(edIzm, 6)}`,
@@ -81,9 +81,11 @@ function buildProductsKeyboard(products) {
   return keyboard;
 }
 
-// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Клавиатура для выбора вариантов цен (2 в ряд)
+// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ: Клавиатура для выбора вариантов цен (2 в ряд)
 function buildPriceVariantsKeyboard(variants, productId, categoryId) {
   const keyboard = [];
+  
+  console.log(`🔧 Создание клавиатуры вариантов: product=${productId}, category=${categoryId}, вариантов=${variants.length}`);
   
   // Добавляем кнопки с вариантами цен (2 в ряд)
   for (let i = 0; i < variants.length; i += 2) {
@@ -96,9 +98,13 @@ function buildPriceVariantsKeyboard(variants, productId, categoryId) {
         variant1.price.toString() : 
         variant1.price.toFixed(2);
       
+      // 🔥 ПРАВИЛЬНЫЙ ФОРМАТ: product_variant_{productId}_{categoryId}_{variantId}
+      const callbackData1 = `product_variant_${productId}_${categoryId}_${variant1.variantId}`;
+      console.log(`🔧 Создана кнопка: ${priceText1}р / ${variant1.ed_izm} -> ${callbackData1}`);
+      
       row.push({
         text: `${priceText1}р / ${truncateText(variant1.ed_izm, 8)}`,
-        callback_data: `product_variant_${productId}_${categoryId}_${variant1.variantId}`
+        callback_data: callbackData1
       });
     }
     
@@ -109,9 +115,13 @@ function buildPriceVariantsKeyboard(variants, productId, categoryId) {
         variant2.price.toString() : 
         variant2.price.toFixed(2);
       
+      // 🔥 ПРАВИЛЬНЫЙ ФОРМАТ: product_variant_{productId}_{categoryId}_{variantId}
+      const callbackData2 = `product_variant_${productId}_${categoryId}_${variant2.variantId}`;
+      console.log(`🔧 Создана кнопка: ${priceText2}р / ${variant2.ed_izm} -> ${callbackData2}`);
+      
       row.push({
         text: `${priceText2}р / ${truncateText(variant2.ed_izm, 8)}`,
-        callback_data: `product_variant_${productId}_${categoryId}_${variant2.variantId}`
+        callback_data: callbackData2
       });
     }
     
@@ -123,6 +133,7 @@ function buildPriceVariantsKeyboard(variants, productId, categoryId) {
     { text: '⬅️ Назад к товарам', callback_data: `back_to_products_${categoryId}` }
   ]);
   
+  console.log(`🔧 Создана клавиатура с ${keyboard.length - 1} рядами вариантов`);
   return keyboard;
 }
 
@@ -147,5 +158,5 @@ module.exports = {
   buildMainMenu, 
   buildProductsKeyboard, 
   buildPriceVariantsKeyboard,
-  formatPriceVariants  // ← ДОБАВЛЯЕМ НОВУЮ ФУНКЦИЮ В ЭКСПОРТ
+  formatPriceVariants
 };

@@ -1,7 +1,9 @@
-﻿// Утилиты для работы с корзиной
-function addToCart(sessionCart, productId, productName, price, quantity) {
+﻿// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Добавление в корзину с поддержкой единиц измерения
+function addToCart(sessionCart, productId, productName, price, quantity, edIzm = 'шт', variantId = 'main') {
   const cart = sessionCart || [];
-  const existingItem = cart.find(item => item.productId === productId);
+  const existingItem = cart.find(item => 
+    item.productId === productId && item.variantId === variantId
+  );
   
   if (existingItem) {
     existingItem.quantity += parseInt(quantity);
@@ -12,7 +14,9 @@ function addToCart(sessionCart, productId, productName, price, quantity) {
       productName,
       price: parseInt(price),
       quantity: parseInt(quantity),
-      totalPrice: parseInt(price) * parseInt(quantity)
+      totalPrice: parseInt(price) * parseInt(quantity),
+      edIzm: edIzm || 'шт', // 🔥 НОВОЕ: единица измерения
+      variantId: variantId   // 🔥 НОВОЕ: ID варианта цены
     });
   }
   
@@ -53,6 +57,7 @@ function updateCartItem(sessionCart, productId, newQuantity) {
   });
 }
 
+// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Форматирование корзины с единицами измерения
 function formatCartMessage(sessionCart) {
   const cart = sessionCart || [];
   
@@ -63,8 +68,14 @@ function formatCartMessage(sessionCart) {
   let message = '🛒 Ваша корзина:\n\n';
   
   cart.forEach((item, index) => {
-    message += `${index + 1}. ${item.productName}\n`;
-    message += `   ${item.quantity} × ${item.price}р = ${item.totalPrice}р\n\n`;
+    message += `${index + 1}. ${item.productName}`;
+    
+    // 🔥 ДОБАВЛЯЕМ: единицу измерения если не "шт"
+    if (item.edIzm && item.edIzm !== 'шт') {
+      message += ` (${item.edIzm})`;
+    }
+    
+    message += `\n   ${item.quantity} × ${item.price}р = ${item.totalPrice}р\n\n`;
   });
   
   const total = getCartTotal(cart);
@@ -76,7 +87,7 @@ function formatCartMessage(sessionCart) {
   return message;
 }
 
-// 🔥 Функция для мини-корзины с правильным форматом
+// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Мини-корзина с единицами измерения
 function formatMiniCart(sessionCart) {
   const cart = sessionCart || [];
   
@@ -88,7 +99,14 @@ function formatMiniCart(sessionCart) {
   
   cart.forEach(item => {
     const itemTotal = item.price * item.quantity;
-    miniCart += `• ${item.productName} - ${item.quantity} × ${item.price}р = ${itemTotal}р\n`;
+    miniCart += `• ${item.productName}`;
+    
+    // 🔥 ДОБАВЛЯЕМ: единицу измерения если не "шт"
+    if (item.edIzm && item.edIzm !== 'шт') {
+      miniCart += ` (${item.edIzm})`;
+    }
+    
+    miniCart += ` - ${item.quantity} × ${item.price}р = ${itemTotal}р\n`;
   });
   
   const total = getCartTotal(cart);
