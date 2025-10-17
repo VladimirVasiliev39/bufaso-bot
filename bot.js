@@ -23,7 +23,24 @@ const { setupOrderHandlers } = require('./utils/order-manager');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 
-// 🔧 ДОБАВЛЕНО: Keep Render Alive System
+// ✅ ДОБАВЛЯЕМ: Синяя кнопка меню
+bot.telegram.setMyCommands([
+  { command: 'start', description: '🔄 Перезапустить бота' },
+  { command: 'admin', description: '⚙️ Админ-панель' }
+]);
+
+// ✅ ДОБАВЛЯЕМ: Обработчик команды /admin
+bot.command('admin', async (ctx) => {
+  const adminChatId = process.env.ADMIN_CHAT_ID;
+  
+  if (ctx.chat.id.toString() === adminChatId) {
+    await ctx.reply('⚙️ Админ-панель в разработке...');
+  } else {
+    await ctx.reply('❌ Доступ запрещен');
+  }
+});
+
+// 🔧 Keep Render Alive System
 app.get('/', (req, res) => {
   res.send('🤖 BuFaso Bot is running!');
 });
@@ -33,42 +50,31 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     timestamp: new Date().toISOString(),
     service: 'BuFaso Bot',
-    uptime: process.uptime(),
-    pingSettings: {
-      interval: process.env.PING_INTERVAL_MINUTES || '14 (default)',
-      delay: process.env.PING_START_DELAY_MINUTES || '1 (default)'
-    }
+    uptime: process.uptime()
   });
 });
 
-// 🔧 ОБНОВЛЕНО: Auto-ping с настраиваемыми интервалами
+// 🔧 УПРОЩАЕМ: Keep Alive только для продакшена
 const startKeepAlive = () => {
-  // Читаем настройки из переменных окружения
-  const pingIntervalMinutes = parseInt(process.env.PING_INTERVAL_MINUTES) || 14;
-  const startDelayMinutes = parseInt(process.env.PING_START_DELAY_MINUTES) || 1;
+  if (!process.env.RENDER) return; // Только на Render
   
-  const pingInterval = pingIntervalMinutes * 60 * 1000; // в миллисекунды
-  const startDelay = startDelayMinutes * 60 * 1000; // в миллисекунды
+  const pingInterval = 14 * 60 * 1000; // 14 минут
+  const startDelay = 1 * 60 * 1000; // 1 минута
   
-  console.log(`🔄 Keep-alive настроен: интервал ${pingIntervalMinutes} мин, задержка старта ${startDelayMinutes} мин`);
+  console.log('🔄 Keep-alive system started');
 
   const pingServer = async () => {
     try {
       const baseUrl = process.env.RENDER_EXTERNAL_URL || 'https://bufaso-bot.onrender.com';
-      const response = await fetch(`${baseUrl}/health`);
-      console.log('🔄 Auto-ping:', response.status, new Date().toLocaleTimeString());
+      await fetch(`${baseUrl}/health`);
+      console.log('🔄 Auto-ping:', new Date().toLocaleTimeString());
     } catch (error) {
       console.log('⚠️ Ping failed:', error.message);
     }
   };
   
-  // Первый пинг через заданную задержку
   setTimeout(pingServer, startDelay);
-  
-  // Затем каждые N минут
   setInterval(pingServer, pingInterval);
-  
-  console.log('✅ Keep-alive system started');
 };
 
 // Инициализация сессии с корзиной
@@ -83,52 +89,6 @@ handleStart(bot);
 handleMainMenu(bot);
 setupOrderHandlers(bot);
 
-//=====================Тесты для расширенной таблицы===================
-// Тест мультиценовой системы
-bot.command('test_multiprice', async (ctx) => {
-  try {
-    const googleSheets = require('./config/google-sheets');
-    const result = await googleSheets.testMultiPrice();
-    
-    if (result) {
-      await ctx.reply('✅ Мультиценовая система работает!');
-    } else {
-      await ctx.reply('❌ Ошибка в мультиценовой системе');
-    }
-  } catch (error) {
-    await ctx.reply(`💥 Ошибка: ${error.message}`);
-  }
-});
-
-// Тест конкретного товара
-bot.command('test_product', async (ctx) => {
-  try {
-    const googleSheets = require('./config/google-sheets');
-    const productId = '1'; // Измени на ID твоего тестового товара
-    const product = await googleSheets.getProductById(productId);
-    
-    if (product) {
-      const variantsText = product.variants.map(v => 
-        `• ${v.price} руб / ${v.ed_izm} (${v.variantId})`
-      ).join('\n');
-      
-      await ctx.reply(
-        `📦 ${product.name}\n` +
-        `📊 Вариантов: ${product.variants.length}\n\n` +
-        `💰 Цены:\n${variantsText}`
-      );
-    } else {
-      await ctx.reply('❌ Товар не найден');
-    }
-  } catch (error) {
-    await ctx.reply(`💥 Ошибка: ${error.message}`);
-  }
-});
-//=====================================================================
-
-
-
-
 // Запуск Express сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
@@ -139,7 +99,7 @@ app.listen(PORT, () => {
 bot.launch().then(() => {
   console.log('🚀 BuFaso_bot запущен в продакшене!');
   
-  // 🔧 ДОБАВЛЕНО: Запускаем keep-alive только на Render
+  // 🔧 Запускаем keep-alive только на Render
   if (process.env.RENDER) {
     startKeepAlive();
   }
