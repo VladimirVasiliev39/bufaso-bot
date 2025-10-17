@@ -127,7 +127,7 @@ function handleMainMenu(bot) {
         {
           type: 'photo',
           media: { source: imagePath },
-          caption: `🪴 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${quantity}</b>`,
+          caption: `🪴 <b>${product.name}</b>\n\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${quantity}</b>`,
           parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
         },
         {
@@ -182,7 +182,7 @@ function handleMainMenu(bot) {
       const priceText = `💰 Цена: <b>${product.selectedPrice}р</b> Ед.изм.: <b>${product.selectedEdIzm}</b>`;
       
       await ctx.editMessageCaption(
-        `🪴 <b>${product.name}</b>\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
+        `🪴 <b>${product.name}</b>\n\n ${product.description}\n\n${priceText}\n\n🛒 Количество: <b>${newQuantity}</b>`,
         {
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: quantityKeyboard }
@@ -333,7 +333,7 @@ function handleMainMenu(bot) {
           {
             type: 'photo',
             media: { source: imagePath },
-            caption: `🪴 <b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
+            caption: `🪴 <b>${product.name}</b>\n\n ${product.description}${priceVariantsText}\n\n💰 Выберите вариант:`,
             parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
           },
           {
@@ -363,7 +363,7 @@ function handleMainMenu(bot) {
           {
             type: 'photo', 
             media: { source: imagePath },
-            caption: `🪴 <b>${product.name}</b>\n ${product.description}${priceVariantsText}\n\n🛒 Количество: <b>${quantity}</b>`,
+            caption: `🪴 <b>${product.name}</b>\n\n ${product.description}${priceVariantsText}\n\n🛒 Количество: <b>${quantity}</b>`,
             parse_mode: 'HTML' // ✅ ДОБАВЛЕНО СЮДА
           },
           {
