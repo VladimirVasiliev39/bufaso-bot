@@ -123,7 +123,7 @@ async function notifyCustomer(orderId, status, userChatId, bot) {
     
     const statusMessages = {
       'accepted': '✅ Принят администратором',
-      'preparing': '✅ Передан на комплектацию', 
+      'preparing': '✅ Передан на комплкутацию', 
       'in_delivery': '✅ Отправлен адресату',
       'cancelled': '❌ Отменён администратором',
       'completed': '♥️ Доставлен и завершён !'
@@ -393,7 +393,7 @@ async function notifyAdmin(orderId, orderData, bot) {
           { text: '📞 Позвонить', callback_data: `order_call_${orderId}` }
         ],
         [
-          { text: '👨‍🍳 В комплектацию', callback_data: `order_prepare_${orderId}` },
+          { text: '👨‍🍳 В готовку', callback_data: `order_prepare_${orderId}` },
           { text: '🚗 В доставку', callback_data: `order_delivery_${orderId}` }
         ],
         [
@@ -480,7 +480,7 @@ function setupOrderHandlers(bot) {
           inline_keyboard: [
             [
               { text: '✅ ПРИНЯТО', callback_data: 'accepted' },
-              { text: '👨‍🍳 В комплектацию', callback_data: `order_prepare_${orderId}` }
+              { text: '👨‍🍳 В готовку', callback_data: `order_prepare_${orderId}` }
             ]
           ]
         }
