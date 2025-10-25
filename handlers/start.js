@@ -11,7 +11,7 @@ async function handleStart(bot) {
       await ctx.replyWithPhoto({
         source: './assets/vitrina.jpg'
       }, {
-        caption: '<b> Добро пожаловать в каталог!\nВыберите категорию:</b>',
+        caption: '<b>👑 Добро пожаловать в каталог!\nВыберите категорию:</b>',
         parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: buildMainMenu(categories)
