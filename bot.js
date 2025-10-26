@@ -25,8 +25,8 @@ const app = express();
 
 // ✅ ДОБАВЛЯЕМ: Синяя кнопка меню
 bot.telegram.setMyCommands([
-  { command: 'start', description: '🔄 Перезапустить бота' },
-  { command: 'admin', description: '⚙️ Админ-панель' }
+  { command: 'start', description: 'Перезапустить бота' },
+  { command: 'admin', description: 'Админ-панель' }
 ]);
 
 // ✅ ДОБАВЛЯЕМ: Обработчик команды /admin
