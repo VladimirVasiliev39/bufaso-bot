@@ -1,4 +1,4 @@
-﻿const { google } = require('googleapis');
+const { google } = require('googleapis');
 
 // 🔧 АУТЕНТИФИКАЦИЯ ДЛЯ RENDER
 function getAuth() {

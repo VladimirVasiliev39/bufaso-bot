@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 // 🔧 Polyfill for Node.js 16 (безопасно для продакшена)
 let fetch;
 if (typeof global.fetch === 'function') {

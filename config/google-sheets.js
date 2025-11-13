@@ -1,4 +1,4 @@
-﻿const { google } = require('googleapis');
+const { google } = require('googleapis');
 
 // 🔧 ИСПРАВЛЕННАЯ АУТЕНТИФИКАЦИЯ ДЛЯ RENDER
 function getAuth() {

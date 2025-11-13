@@ -1,4 +1,4 @@
-﻿// 🔥 Функция для обрезки длинного текста
+// 🔥 Функция для обрезки длинного текста
 function truncateText(text, maxLength = 20) {
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength - 3) + '...';

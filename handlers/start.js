@@ -1,4 +1,4 @@
-﻿const { getCategories } = require('../config/google-sheets');
+const { getCategories } = require('../config/google-sheets');
 const { buildMainMenu } = require('../utils/keyboard-builder');
 
 async function handleStart(bot) {

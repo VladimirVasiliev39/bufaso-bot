@@ -1,4 +1,4 @@
-﻿// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Добавление в корзину с поддержкой единиц измерения
+// 🔥 ОБНОВЛЕННАЯ ФУНКЦИЯ: Добавление в корзину с поддержкой единиц измерения
 function addToCart(sessionCart, productId, productName, price, quantity, edIzm = 'шт', variantId = 'main') {
   const cart = sessionCart || [];
   const existingItem = cart.find(item => 

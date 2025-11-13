@@ -1,4 +1,4 @@
-﻿const { getCategories, getProductsByCategory, getProductById, getProductWithVariant, getCategoryName } = require('../config/google-sheets');
+const { getCategories, getProductsByCategory, getProductById, getProductWithVariant, getCategoryName } = require('../config/google-sheets');
 const { buildMainMenu, buildProductsKeyboard, buildPriceVariantsKeyboard, formatPriceVariants } = require('../utils/keyboard-builder');
 const { addToCart, formatCartMessage, getCartItemsCount, getCartTotal, formatMiniCart } = require('../utils/cart-manager');
 const { getProductImage } = require('../utils/image-handler');
