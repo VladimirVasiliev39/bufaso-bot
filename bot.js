@@ -19,14 +19,24 @@ const express = require('express');
 const { handleStart } = require('./handlers/start');
 const { handleMainMenu } = require('./handlers/main-menu');
 const { setupOrderHandlers } = require('./utils/order-manager');
-
+const { setupPublisherHandlers } = require('./handlers/publisher-handler'); // 🔥 ДОБАВЛЯЕМ
+//===============================================================
+// После импортов, до создания бота
+console.log('🔍 Проверка переменных окружения:');
+console.log('   ADMIN_CHAT_ID:', process.env.ADMIN_CHAT_ID);
+console.log('   ADMIN_CHAT_ID_PUBLIC:', process.env.ADMIN_CHAT_ID_PUBLIC);
+console.log('   ADMIN_CHAT_ID_CHANEL:', process.env.ADMIN_CHAT_ID_CHANEL);
+console.log('   CHANNEL_ID:', process.env.CHANNEL_ID); // Если есть
+//===============================================================
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const app = express();
 
 // ✅ ДОБАВЛЯЕМ: Синяя кнопка меню
 bot.telegram.setMyCommands([
   { command: 'start', description: 'Перезапустить бота' },
-  { command: 'admin', description: 'Админ-панель' }
+  { command: 'admin', description: 'Админ-панель' },
+  { command: 'publish', description: 'Опубликовать товары' }, // 🔥 ДОБАВЛЯЕМ
+  { command: 'preview', description: 'Предпросмотр товара' }  // 🔥 ДОБАВЛЯЕМ
 ]);
 
 // ✅ ДОБАВЛЯЕМ: Обработчик команды /admin
@@ -83,11 +93,33 @@ bot.use(session({
     cart: []
   })
 }));
-
+//==============================================================
 // Регистрация обработчиков
+//handleStart(bot);
+//handleMainMenu(bot);
+//setupOrderHandlers(bot);
+//setupPublisherHandlers(bot); // 🔥 ДОБАВЛЯЕМ
+
+// Регистрация обработчиков - ПУБЛИКАТОР ПЕРВЫМ!
+setupPublisherHandlers(bot); // 🔥 ПЕРЕМЕСТИ ЭТУ СТРОКУ ВВЕРХ
 handleStart(bot);
 handleMainMenu(bot);
 setupOrderHandlers(bot);
+
+//=====================================================================
+// 🔥 ДОБАВЬ ЭТУ ПРОВЕРКУ
+console.log('🔍 Проверка зарегистрированных команд...');
+bot.telegram.getMyCommands().then(commands => {
+  console.log('📝 Зарегистрированные команды бота:');
+  commands.forEach(cmd => {
+    console.log(`   /${cmd.command} - ${cmd.description}`);
+  });
+}).catch(err => {
+  console.error('❌ Ошибка получения команд:', err);
+});
+
+
+
 
 // Запуск Express сервера
 const PORT = process.env.PORT || 3000;

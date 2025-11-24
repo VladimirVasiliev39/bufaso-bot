@@ -181,7 +181,7 @@ function getPriceVariants(product) {
   return variants;
 }
 
-// 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ: Поиск товара по ID
+// 🔥  ФУНКЦИЯ: Поиск товара по ID =====================================================
 async function getProductById(productId) {
   try {
     console.log(`🔍 DEBUG getProductById: поиск ID="${productId}", тип=${typeof productId}`);
