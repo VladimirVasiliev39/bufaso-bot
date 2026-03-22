@@ -521,7 +521,7 @@ bot.action('back_to_categories', async (ctx) => {
     const keyboard = buildMainMenu(categories, cartCount);
     
     const userId = ctx.from.id;
-    let caption = '👑 Главное меню';
+    let caption = '👑Главное меню';
     
     if (!userFirstLaunch.has(userId)) {
       caption = '🌟 Добро пожаловать в каталог!\nВыберите категорию:';
